@@ -12,7 +12,7 @@ TrueNAS SCALE (ElectricEel-24.10.2.2)
 ├── Isolated GPUs: 2× NVIDIA RTX 4060 Ti 16GB — passed to VM
 └── VM: "AIserver" (Ubuntu Server 24.04 LTS)
     ├── llama-server (systemd service, starts on boot)
-    ├── Model: Qwen 3.5 27B (Q4_K_M or Q6_K GGUF)
+    ├── Model: Qwen 3.6 35B-A3B (Q4_K_M GGUF) + vision mmproj
     └── OpenAI-compatible API on port 8080
 ```
 
@@ -33,15 +33,20 @@ TrueNAS boots → VM "AIserver" auto-starts → systemd starts `llama-server` �
 | iGPU | AMD Radeon (Raphael, `0000:12:00.0`) — used by TrueNAS host |
 | Total VRAM | 32,760 MiB (~32 GB) across both GPUs |
 
-### VRAM Budget
+### VRAM Budget (Qwen 3.6 35B-A3B Q4_K_M + mmproj)
 
-Usable VRAM after CUDA overhead: ~30 GB. Budget by quantization:
+The model file is ~19.9 GiB. Model weights use ~20,117 MiB across both GPUs plus ~273 MiB on CPU. The vision projector (mmproj-BF16) adds ~861 MiB to GPU 0, plus a ~248 MiB vision compute buffer.
 
-| Quant | Model Size | VRAM Left for KV Cache | Max Context (approx) |
-|-------|-----------|----------------------|---------------------|
-| Q4_K_M | ~16.5 GB | ~14 GB | ~98K tokens |
-| Q6_K | ~22 GB | ~8 GB | ~32K tokens |
-| Q8_0 | ~28.6 GB | ~1.5 GB | Risky, not recommended |
+This is a hybrid architecture (Gated Delta Net + MoE) — only 10 of 40 layers use traditional KV-cache attention. KV cache scales at roughly **19.5 MiB per 1K tokens**.
+
+| Context Size | KV Cache | GPU 0 Free | GPU 1 Free | Notes |
+|-------------|----------|-----------|-----------|-------|
+| 60K | ~1,175 MiB | ~2,990 MiB | ~4,508 MiB | Comfortable headroom |
+| 130K (current) | ~2,540 MiB | ~2,162 MiB | ~4,000 MiB | Stable, room for vision |
+| 150K | ~2,930 MiB | ~1,770 MiB | ~3,610 MiB | Tight on GPU 0 with images |
+| 190K (theoretical max) | ~3,710 MiB | ~990 MiB | ~2,830 MiB | Risky, likely OOM with images |
+
+**Note:** GPU 0 is the bottleneck because it hosts the vision encoder and its compute buffer. Image processing causes temporary VRAM spikes on GPU 0.
 
 ---
 
@@ -144,12 +149,17 @@ sudo systemctl restart llama-server
 
 Stored in `~/models/`. Currently downloaded:
 
-| File | Quant | Size |
-|------|-------|------|
-| `Qwen_Qwen3.5-27B-Q4_K_M.gguf` | Q4_K_M | ~16.5 GB |
-| `Qwen_Qwen3.5-27B-Q6_K.gguf` | Q6_K | ~22 GB |
+| File | Type | Size |
+|------|------|------|
+| `Qwen_Qwen3.6-35B-A3B-Q4_K_M.gguf` | Main model (Q4_K_M) | ~19.9 GiB |
+| `mmproj-BF16.gguf` | Vision projector (BF16) | ~861 MiB |
+| `Qwen_Qwen3.5-27B-Q4_K_M.gguf` | Older model (Q4_K_M) | ~16.5 GB |
+| `Qwen_Qwen3.5-27B-Q6_K.gguf` | Older model (Q6_K) | ~22 GB |
 
-Source: [bartowski/Qwen_Qwen3.5-27B-GGUF](https://huggingface.co/bartowski/Qwen_Qwen3.5-27B-GGUF)
+Sources:
+- Qwen 3.6: [bartowski/Qwen_Qwen3.6-35B-A3B-GGUF](https://huggingface.co/bartowski/Qwen_Qwen3.6-35B-A3B-GGUF)
+- Vision projector: [unsloth/Qwen3.6-35B-A3B-GGUF](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF) (file: `mmproj-BF16.gguf`)
+- Qwen 3.5: [bartowski/Qwen_Qwen3.5-27B-GGUF](https://huggingface.co/bartowski/Qwen_Qwen3.5-27B-GGUF)
 
 To download a new model:
 
@@ -167,16 +177,18 @@ wget https://huggingface.co/<repo>/resolve/main/<filename>.gguf
 **`/etc/llama-server.conf`**
 
 ```ini
-MODEL_PATH=/home/daryl/models/Qwen_Qwen3.5-27B-Q4_K_M.gguf
+MODEL_PATH=/home/daryl/models/Qwen_Qwen3.6-35B-A3B-Q4_K_M.gguf
+MMPROJ_PATH=/home/daryl/models/mmproj-BF16.gguf
 GPU_LAYERS=99
 HOST=0.0.0.0
 PORT=8080
-CTX_SIZE=98304
+CTX_SIZE=130000
 ```
 
 | Variable | Description |
 |----------|-------------|
 | `MODEL_PATH` | Absolute path to the GGUF model file |
+| `MMPROJ_PATH` | Absolute path to the vision projector GGUF |
 | `GPU_LAYERS` | Number of layers to offload to GPU. `99` = all layers |
 | `HOST` | Listen address. `0.0.0.0` = accessible from network |
 | `PORT` | HTTP port for the API |
@@ -197,6 +209,7 @@ User=daryl
 EnvironmentFile=/etc/llama-server.conf
 ExecStart=/home/daryl/llama.cpp/build/bin/llama-server \
     -m ${MODEL_PATH} \
+    --mmproj ${MMPROJ_PATH} \
     -ngl ${GPU_LAYERS} \
     --host ${HOST} \
     --port ${PORT} \
@@ -226,6 +239,9 @@ sudo systemctl stop llama-server
 
 # Disable auto-start
 sudo systemctl disable llama-server
+
+# Reload service file after editing llama-server.service
+sudo systemctl daemon-reload
 ```
 
 ### Switching Models
@@ -233,13 +249,13 @@ sudo systemctl disable llama-server
 ```bash
 # Edit the config
 sudo nano /etc/llama-server.conf
-# Change MODEL_PATH and CTX_SIZE as needed
+# Change MODEL_PATH, MMPROJ_PATH, and CTX_SIZE as needed
 
 # Restart to apply
 sudo systemctl restart llama-server
 ```
 
-Remember to adjust `CTX_SIZE` when switching quants — Q4_K_M supports ~98K, Q6_K supports ~32K.
+When switching models, adjust `CTX_SIZE` based on model size and available VRAM. If the new model doesn't support vision, remove or comment out `MMPROJ_PATH` and remove the `--mmproj` line from the service file.
 
 ---
 
@@ -258,6 +274,24 @@ curl http://<VM-IP>:8080/v1/chat/completions \
   }'
 ```
 
+### Vision (Image Input)
+
+```bash
+# Using base64-encoded image
+curl http://<VM-IP>:8080/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "messages": [{
+      "role": "user",
+      "content": [
+        {"type": "text", "text": "What is in this image?"},
+        {"type": "image_url", "image_url": {"url": "data:image/png;base64,<BASE64_DATA>"}}
+      ]
+    }],
+    "max_tokens": 500
+  }'
+```
+
 ### From Python (using openai library)
 
 ```python
@@ -266,7 +300,7 @@ from openai import OpenAI
 client = OpenAI(base_url="http://<VM-IP>:8080/v1", api_key="unused")
 
 response = client.chat.completions.create(
-    model="qwen3.5-27b",  # model name is ignored, uses whatever is loaded
+    model="qwen3.6-35b-a3b",  # model name is ignored, uses whatever is loaded
     messages=[{"role": "user", "content": "Hello!"}],
     max_tokens=200,
 )
@@ -275,7 +309,7 @@ print(response.choices[0].message.content)
 
 ### Web UI
 
-llama.cpp includes a built-in web UI at `http://<VM-IP>:8080/` for interactive chat.
+llama.cpp includes a built-in web UI at `http://<VM-IP>:8080/` for interactive chat. It supports image uploads via the attachment menu.
 
 ### Health Check
 
@@ -295,7 +329,7 @@ sudo journalctl -u llama-server --no-pager -n 50
 
 Common causes:
 - **CUDA OOM**: Reduce `CTX_SIZE` in `/etc/llama-server.conf`
-- **Model not found**: Check `MODEL_PATH` is correct
+- **Model not found**: Check `MODEL_PATH` and `MMPROJ_PATH` are correct
 - **Argument errors**: Check llama-server docs for flag changes after updates (e.g., `--flash-attn` now requires `on`/`off`/`auto`)
 
 ### nvidia-smi shows no GPUs
@@ -316,6 +350,13 @@ Common causes:
 - Verify both GPUs are loaded: `nvidia-smi` should show memory usage on both
 - llama.cpp auto-splits layers proportionally by free VRAM
 - Use `-ts 1,1` flag for forced even split (add to service file ExecStart)
+
+### Vision not working / segfault on image
+
+- Ensure `mmproj-BF16.gguf` is present and the path in the config is correct
+- Check logs for "loaded multimodal model" confirmation at startup
+- Update llama.cpp to the latest build — vision support for Qwen3.6 is very new
+- Reduce `CTX_SIZE` if OOM occurs during image processing (images consume extra VRAM temporarily)
 
 ### Disk full
 
@@ -350,6 +391,10 @@ Drop any GGUF file into `~/models/` and update `/etc/llama-server.conf`.
 Not recommended with current VRAM. Options:
 - Run a small model (≤4B) on CPU only (`-ngl 0`) on a separate port
 - Add a second service file pointing to a different port and config
+
+### Audio support
+
+llama.cpp has experimental audio model support, but audio models (Ultravox, Voxtral, Qwen3-ASR) are separate models with their own text backbone — they can't be added to Qwen3.6 as a plugin. To add audio, run a second llama-server instance on CPU with a small audio model like Qwen3-ASR 1.7B on a separate port.
 
 ### Upgrade to larger models
 
@@ -387,11 +432,11 @@ server {
 
 | File | Purpose |
 |------|---------|
-| `/etc/llama-server.conf` | Server configuration (model path, context size, port) |
+| `/etc/llama-server.conf` | Server configuration (model path, mmproj path, context size, port) |
 | `/etc/systemd/system/llama-server.service` | Systemd service definition |
 | `~/llama.cpp/` | llama.cpp source and build |
 | `~/llama.cpp/build/bin/` | Compiled binaries |
-| `~/models/` | GGUF model files |
+| `~/models/` | GGUF model files and vision projector |
 
 ## Relevant Documentation
 
@@ -399,5 +444,7 @@ server {
 - [TrueNAS GPU Isolation](https://www.truenas.com/docs/scale/24.10/scaletutorials/systemsettings/advanced/managegpuscale/)
 - [llama.cpp Build Docs](https://github.com/ggml-org/llama.cpp/blob/master/docs/build.md)
 - [llama.cpp Server Docs](https://github.com/ggml-org/llama.cpp/blob/master/examples/server/README.md)
-- [Qwen 3.5 27B GGUFs (bartowski)](https://huggingface.co/bartowski/Qwen_Qwen3.5-27B-GGUF)
-- [Qwen 3.5 27B GGUFs (unsloth)](https://huggingface.co/unsloth/Qwen3.5-27B-GGUF)
+- [llama.cpp Multimodal Docs](https://github.com/ggml-org/llama.cpp/blob/master/docs/multimodal.md)
+- [Qwen 3.6 35B-A3B (HuggingFace)](https://huggingface.co/Qwen/Qwen3.6-35B-A3B)
+- [Qwen 3.6 35B-A3B GGUFs (bartowski)](https://huggingface.co/bartowski/Qwen_Qwen3.6-35B-A3B-GGUF)
+- [Qwen 3.6 35B-A3B GGUFs (unsloth)](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF)
