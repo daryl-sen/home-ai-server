@@ -1,6 +1,10 @@
 # Build History — llama.cpp on TrueNAS ElectricEel
 
-> Original build log for the author's specific homelab. Captures hardware, BIOS, TrueNAS VM config, NVIDIA/CUDA install steps, the original `/etc/llama-server.conf` based setup, VRAM budgeting math, and troubleshooting notes. Kept here as reference; the repo's tooling (see top-level `README.md`) supersedes the original `/etc/llama-server.conf` workflow described below.
+> **This file is a build log and troubleshooting reference — not the source of truth.** It captures the author's original homelab setup: hardware, BIOS, TrueNAS VM config, NVIDIA/CUDA install steps, VRAM budgeting math, and the original `/etc/llama-server.conf` based setup. Use it to trace back issues and understand the build decisions.
+>
+> **For current setup and operation, see:**
+> - [`README.md`](../README.md) — repo overview and quick start
+> - [`model-switching/README.md`](../model-switching/README.md) — model switching and service management
 
 Self-hosted LLM inference server running llama.cpp inside a Ubuntu VM on TrueNAS SCALE, with dual NVIDIA GPU passthrough.
 
@@ -226,38 +230,11 @@ WantedBy=multi-user.target
 
 ### Common Commands
 
-```bash
-# Check status
-sudo systemctl status llama-server
-
-# View live logs (shows tokens/sec during inference)
-sudo journalctl -u llama-server -f
-
-# Restart after config change
-sudo systemctl restart llama-server
-
-# Stop the server
-sudo systemctl stop llama-server
-
-# Disable auto-start
-sudo systemctl disable llama-server
-
-# Reload service file after editing llama-server.service
-sudo systemctl daemon-reload
-```
+See [`common-commands.md`](../common-commands.md) for systemd management commands.
 
 ### Switching Models
 
-```bash
-# Edit the config
-sudo nano /etc/llama-server.conf
-# Change MODEL_NAME, MMPROJ_NAME, and CTX_SIZE as needed
-
-# Restart to apply
-sudo systemctl restart llama-server
-```
-
-When switching models, adjust `CTX_SIZE` based on model size and available VRAM. If the new model doesn't support vision, remove or comment out `MMPROJ_NAME` and remove the `--mmproj` line from the service file.
+The old workflow described above has been replaced by the model-switching tool. See [`model-switching/README.md`](../model-switching/README.md) for the current method.
 
 ---
 
@@ -432,13 +409,17 @@ server {
 
 ## Key File Locations
 
+This file is a build log and reference — **not the source of truth**. For current configuration, see:
+
 | File | Purpose |
 |------|---------|
-| `/etc/llama-server.conf` | Server configuration (model path, mmproj path, context size, port) |
-| `/etc/systemd/system/llama-server.service` | Systemd service definition |
+| `model-switching/configs/*.conf` | Per-model server configuration |
+| `model-switching/llama-server.service` | Systemd user service definition |
+| `model-switching/README.md` | How to switch models and manage the service |
 | `~/llama.cpp/` | llama.cpp source and build |
 | `~/llama.cpp/build/bin/` | Compiled binaries |
 | `~/models/` | GGUF model files and vision projector |
+| `README.md` (root) | Overview of all repo tooling |
 
 ## Relevant Documentation
 
