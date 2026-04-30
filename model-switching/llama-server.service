@@ -1,0 +1,20 @@
+[Unit]
+Description=llama.cpp Server (user)
+After=network.target
+
+[Service]
+Type=simple
+EnvironmentFile=%h/llama-server/active.conf
+ExecStart=%h/llama.cpp/build/bin/llama-server \
+    -m ${MODEL_PATH} \
+    --mmproj ${MMPROJ_PATH} \
+    -ngl ${GPU_LAYERS} \
+    --host ${HOST} \
+    --port ${PORT} \
+    -c ${CTX_SIZE} \
+    --flash-attn on
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target

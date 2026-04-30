@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+usage() {
+    echo "Usage: switch-model {27b|35b|status|restart}"
+    exit 1
+}
+
+[[ $# -eq 1 ]] || usage
+
+case "$1" in
+    27b|35b)
+        target="$ROOT/configs/$1.conf"
+        [[ -f "$target" ]] || { echo "Missing $target"; exit 1; }
+        ln -sfn "$target" "$ROOT/active.conf"
+        systemctl --user restart llama-server
+        echo "Switched to $1, restarting llama-server..."
+        sleep 2
+        systemctl --user status llama-server --no-pager | head -n 5
+        ;;
+    status)
+        echo "Active config: $(readlink -f "$ROOT/active.conf")"
+        systemctl --user is-active llama-server
+        ;;
+    restart)
+        systemctl --user restart llama-server
+        ;;
+    *)
+        usage
+        ;;
+esac
