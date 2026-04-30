@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SSH_KEY="$HOME/.ssh/id_ed25519"
+SSH_CONFIG="$HOME/.ssh/config"
+HOST_ALIAS="claude-vm"
+
+echo "=== Claude VM first-time setup ==="
+echo ""
+
+read -rp "VM IP address: " VM_HOST
+read -rp "VM username: " VM_USER
+echo ""
+
+# 1. Generate SSH key if it doesn't exist
+if [[ ! -f "$SSH_KEY" ]]; then
+  echo "Generating ed25519 SSH key..."
+  ssh-keygen -t ed25519 -f "$SSH_KEY" -N ""
+  echo ""
+else
+  echo "SSH key already exists at $SSH_KEY, skipping generation."
+fi
+
+# 2. Add SSH config entry if not present
+if grep -q "^Host $HOST_ALIAS" "$SSH_CONFIG" 2>/dev/null; then
+  echo "SSH config entry '$HOST_ALIAS' already exists, skipping."
+else
+  echo "Adding '$HOST_ALIAS' to $SSH_CONFIG..."
+  mkdir -p "$(dirname "$SSH_CONFIG")"
+  cat >> "$SSH_CONFIG" <<EOF
+
+Host $HOST_ALIAS
+  HostName $VM_HOST
+  User $VM_USER
+  IdentityFile $SSH_KEY
+  AddKeysToAgent yes
+  UseKeychain yes
+EOF
+  chmod 600 "$SSH_CONFIG"
+  echo "Done."
+fi
+
+# 3. Copy key to the VM
+echo ""
+echo "Copying SSH key to the VM (you'll be prompted for the VM password one last time)..."
+ssh-copy-id -i "$SSH_KEY" "$HOST_ALIAS"
+
+# 4. Verify connection
+echo ""
+echo "Verifying passwordless connection..."
+if ssh -o BatchMode=yes "$HOST_ALIAS" "echo 'Connected successfully.'" 2>/dev/null; then
+  echo "Setup complete. You can now run ./claude-vm to connect."
+else
+  echo "Connection test failed. Check your network and VM settings." >&2
+  exit 1
+fi

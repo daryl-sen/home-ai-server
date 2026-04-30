@@ -1,0 +1,108 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+VM_HOST="claude-vm"
+PROJECTS_DIR="~/Desktop/claude"
+SSH_ONLY=false
+LOCAL_ONLY=false
+LOCAL_CONFIG="$HOME/.claude-vm-local"
+
+usage() {
+  cat <<EOF
+Usage: ./claude-vm [--ssh] [--local] [project-name]
+
+Connect to the Claude VM and launch Claude Code in a project directory.
+
+Options:
+  --ssh    SSH into the VM without launching Claude Code
+  --local  Launch Claude with a local base URL and model
+  -h       Show this help message
+
+If no project name is given, lists available projects and prompts you to pick one.
+EOF
+  exit 0
+}
+
+# Parse args
+PROJECT=""
+for arg in "$@"; do
+  case "$arg" in
+    --ssh)   SSH_ONLY=true ;;
+    --local) LOCAL_ONLY=true ;;
+    -h|--help) usage ;;
+    -*)    echo "Unknown option: $arg" >&2; exit 1 ;;
+    *)     PROJECT="$arg" ;;
+  esac
+done
+
+# If no project specified, list projects on the VM and prompt
+if [[ -z "$PROJECT" ]]; then
+  echo "Fetching projects from $VM_HOST:$PROJECTS_DIR ..."
+  projects=()
+  while IFS= read -r line; do
+    projects+=("$line")
+  done < <(ssh "$VM_HOST" "ls -1 $PROJECTS_DIR" 2>/dev/null)
+
+  if [[ ${#projects[@]} -eq 0 ]]; then
+    echo "No projects found in $PROJECTS_DIR on the VM." >&2
+    exit 1
+  fi
+
+  echo ""
+  for i in "${!projects[@]}"; do
+    printf "  %d) %s\n" $((i + 1)) "${projects[$i]}"
+  done
+  echo ""
+
+  while true; do
+    read -rp "Select a project (1-${#projects[@]}): " choice
+    if [[ "$choice" =~ ^[0-9]+$ ]] && (( choice >= 1 && choice <= ${#projects[@]} )); then
+      PROJECT="${projects[$((choice - 1))]}"
+      break
+    fi
+    echo "Invalid selection, try again."
+  done
+fi
+
+REMOTE_PATH="$PROJECTS_DIR/$PROJECT"
+
+SESSION_NAME="claude-${PROJECT}"
+SSH_SESSION_NAME="ssh-${PROJECT}"
+
+TMUX_SETUP="tmux start-server; tmux set -g mouse on"
+
+# Handle --ssh: SSH into the VM with tmux, no Claude
+if $SSH_ONLY; then
+  exec ssh -t "$VM_HOST" "cd $REMOTE_PATH && $TMUX_SETUP; tmux new-session -A -s '$SSH_SESSION_NAME'"
+fi
+
+# Handle --local: read or prompt for base URL and model
+if $LOCAL_ONLY; then
+  BASE_URL=""
+  MODEL=""
+
+  if [[ -f "$LOCAL_CONFIG" ]]; then
+    BASE_URL=$(grep '^BASE_URL=' "$LOCAL_CONFIG" 2>/dev/null | cut -d= -f2- || true)
+    MODEL=$(grep '^MODEL=' "$LOCAL_CONFIG" 2>/dev/null | cut -d= -f2- || true)
+  fi
+
+  if [[ -z "$BASE_URL" ]]; then
+    read -rp "Local Anthropic base URL (e.g. http://192.168.1.68:8080): " BASE_URL
+  fi
+  if [[ -z "$MODEL" ]]; then
+    read -rp "Model (e.g. qwen3.6:35b): " MODEL
+  fi
+
+  # Persist config
+  cat > "$LOCAL_CONFIG" <<CONF
+BASE_URL=$BASE_URL
+MODEL=$MODEL
+CONF
+  echo ""
+  echo "Config saved to $LOCAL_CONFIG"
+  echo ""
+
+  exec ssh -t "$VM_HOST" "cd $REMOTE_PATH && $TMUX_SETUP; tmux new-session -A -s '$SESSION_NAME' env ANTHROPIC_BASE_URL='$BASE_URL' claude --model '$MODEL' --dangerously-skip-permissions"
+else
+  exec ssh -t "$VM_HOST" "cd $REMOTE_PATH && $TMUX_SETUP; tmux new-session -A -s '$SESSION_NAME' claude --dangerously-skip-permissions"
+fi
