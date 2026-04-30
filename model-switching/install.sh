@@ -27,4 +27,4 @@ systemctl --user restart llama-server
 
 echo
 echo "Installed. Active model: $DEFAULT_MODEL"
-echo "Add ~/llama-server to your PATH or alias: alias switch-model=~/llama-server/switch-model"
+echo "Tip: alias switch-model=$ROOT/switch-model"

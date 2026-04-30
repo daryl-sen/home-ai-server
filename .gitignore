@@ -1,0 +1,22 @@
+# Secrets / credentials
+.env
+.env.*
+*.key
+*.pem
+*.p12
+*.pfx
+id_rsa
+id_ed25519
+credentials.json
+
+# Local runtime config (claude-vm)
+.claude-vm-local
+
+# Generated at install time on the server (symlink, not source)
+model-switching/active.conf
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*.swp
+*~

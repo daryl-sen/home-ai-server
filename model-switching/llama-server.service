@@ -4,10 +4,10 @@ After=network.target
 
 [Service]
 Type=simple
-EnvironmentFile=%h/llama-server/active.conf
+EnvironmentFile=%h/home-ai-server/model-switching/active.conf
 ExecStart=%h/llama.cpp/build/bin/llama-server \
-    -m ${MODEL_PATH} \
-    --mmproj ${MMPROJ_PATH} \
+    -m %h/models/${MODEL_NAME} \
+    --mmproj %h/models/${MMPROJ_NAME} \
     -ngl ${GPU_LAYERS} \
     --host ${HOST} \
     --port ${PORT} \

@@ -1,97 +1,90 @@
 # Model Switching (27B Dense ↔ 35B-A3B MoE)
 
-A self-contained, portable setup for switching `llama-server` between two models with one command. Switch takes ~20–30s.
+A self-contained setup for switching `llama-server` between two models with one command. Switch takes ~20–30s.
 
-This directory is the **source of truth**. Files get deployed to `~/llama-server/` on the VM, where the systemd user unit reads them.
+The repo itself is the install location — files are read in-place from `~/home-ai-server/model-switching/`. No rsync, no separate deploy step.
 
 ---
 
 ## How It Works
 
-A user-level systemd service (under `~/.config/systemd/user/`) runs `llama-server` as your user. The unit reads `~/llama-server/active.conf`, which is a symlink pointing at one of the per-model configs in `~/llama-server/configs/`. The `switch-model` script repoints the symlink and restarts the service.
+A user-level systemd service (under `~/.config/systemd/user/`) runs `llama-server` as your user. The unit reads `~/home-ai-server/model-switching/active.conf`, which is a symlink pointing at one of the per-model configs in `configs/`. The `switch-model` script repoints the symlink and restarts the service, which causes `llama-server` to exit (releasing GPU memory) and start back up with the new model loaded.
 
 Because it's a user service, `sudo` is only needed once during initial setup (to enable lingering so the service starts at boot without you logging in). After that, all switching is unprivileged.
 
 ```
-model-switching/                 (this repo dir — source of truth)
+~/home-ai-server/model-switching/
 ├── configs/
 │   ├── 27b.conf                 (fast mode)
 │   └── 35b.conf                 (accurate mode)
+├── active.conf                  → symlink to one of configs/*.conf (created by install.sh)
 ├── switch-model                 (switcher script)
 ├── llama-server.service         (systemd user unit)
 ├── install.sh                   (one-shot bootstrap)
 └── README.md
 ```
 
-After deployment, the VM mirrors this layout at `~/llama-server/`, with an extra `active.conf` symlink that `install.sh` creates.
-
 ---
 
 ## First-Time Setup
 
-Prerequisites on the VM: `llama.cpp` built at `~/llama.cpp/build/bin/llama-server`, and the GGUF model files present at the paths in `configs/*.conf` (edit those configs if your paths differ).
+Prerequisites on the Ubuntu server:
+- Repo cloned at `~/home-ai-server`
+- `llama.cpp` built at `~/llama.cpp/build/bin/llama-server`
+- GGUF model files present at `~/models/<MODEL_NAME>` matching the names in `configs/*.conf` (edit those configs if your filenames differ)
 
-From your laptop, in the repo root:
+Then:
 
 ```bash
-# 1. Copy this directory to the VM as ~/llama-server/
-rsync -a --delete model-switching/ daryl@<VM-IP>:~/llama-server/
-
-# 2. Run the bootstrap on the VM (pass 27b or 35b as the starting model)
-ssh daryl@<VM-IP> '~/llama-server/install.sh 35b'
+# Run the bootstrap (pass 27b or 35b as the starting model; defaults to 35b)
+~/home-ai-server/model-switching/install.sh 35b
 ```
 
-`install.sh` does the following on the VM:
+`install.sh` does:
 1. Makes `switch-model` executable.
 2. Creates the `active.conf` symlink pointing at the chosen default config.
 3. Copies `llama-server.service` into `~/.config/systemd/user/`.
 4. Runs `sudo loginctl enable-linger $USER` (one-time, prompts for sudo) so the service starts at boot.
 5. Enables and starts the systemd user service.
 
-### Optional: convenience alias on the VM
+When it finishes, `llama-server` is running with the default model on `http://<server-ip>:8080/v1/`.
+
+### Optional: convenience alias
 
 ```bash
-ssh daryl@<VM-IP>
-echo 'alias switch-model=~/llama-server/switch-model' >> ~/.zshrc   # or ~/.bashrc
+echo 'alias switch-model=~/home-ai-server/model-switching/switch-model' >> ~/.bashrc
 # or symlink onto PATH:
-mkdir -p ~/.local/bin && ln -sf ~/llama-server/switch-model ~/.local/bin/switch-model
-```
-
-### Optional: retire an older system-level service
-
-If you previously ran `llama-server` from `/etc/systemd/system/`, retire it so it doesn't fight the new user service:
-
-```bash
-sudo systemctl disable --now llama-server
-sudo rm /etc/systemd/system/llama-server.service /etc/llama-server.conf
-sudo systemctl daemon-reload
+mkdir -p ~/.local/bin && ln -sf ~/home-ai-server/model-switching/switch-model ~/.local/bin/switch-model
 ```
 
 ---
 
 ## Subsequent Runs
 
-### Daily use (on the VM)
+### Switching models
 
 ```bash
-switch-model 27b       # fast mode
-switch-model 35b       # accurate mode
-switch-model status    # show active config + service state
-switch-model restart   # restart without changing model
+~/home-ai-server/model-switching/switch-model 27b       # fast mode
+~/home-ai-server/model-switching/switch-model 35b       # accurate mode
+~/home-ai-server/model-switching/switch-model status    # show active config + service state
+~/home-ai-server/model-switching/switch-model restart   # restart without changing model
 ```
 
-API endpoint is unchanged: `http://<VM-IP>:8080/v1/`.
+(Or just `switch-model 27b` if you set up the alias above.)
+
+The restart causes the running `llama-server` process to exit, which releases the model from GPU memory; systemd then starts it again with the new config and the new model is loaded fresh. API endpoint is unchanged: `http://<server-ip>:8080/v1/`.
 
 ### Updating configs / scripts
 
-Edit files in this repo, commit, then redeploy:
+Pull the repo and reload:
 
 ```bash
-rsync -a --delete model-switching/ daryl@<VM-IP>:~/llama-server/
-ssh daryl@<VM-IP> 'systemctl --user daemon-reload && systemctl --user restart llama-server'
+cd ~/home-ai-server && git pull
+systemctl --user daemon-reload    # only needed if llama-server.service changed
+systemctl --user restart llama-server
 ```
 
-`--delete` keeps the VM in sync with the repo, but it will also remove `active.conf` on the VM — that's fine, just re-run `~/llama-server/install.sh <model>` (or recreate the symlink manually) afterward. If you'd rather preserve `active.conf`, drop `--delete` or add `--exclude active.conf`.
+If you edited `llama-server.service`, re-run `install.sh` to recopy it into `~/.config/systemd/user/` (or `cp` it manually).
 
 ### Logs and debugging
 
@@ -113,20 +106,19 @@ systemctl --user status llama-server               # service state
 ## Moving to Another Machine
 
 ```bash
-rsync -a model-switching/ newhost:~/llama-server/
-ssh newhost '~/llama-server/install.sh'
+git clone <repo> ~/home-ai-server
+# build llama.cpp at ~/llama.cpp, place models at ~/models/
+~/home-ai-server/model-switching/install.sh
 ```
-
-Assuming the new host has `llama.cpp` built at `~/llama.cpp/build/bin/llama-server` and the model files exist at the paths in the configs, that's the entire migration. Adjust `configs/*.conf` `MODEL_PATH` if the new host stores models elsewhere.
 
 ---
 
 ## Caveat: Vision Support Differences
 
-If a model variant doesn't support vision, you'd want to drop `MMPROJ_PATH` from its config — but the service unit always passes `--mmproj ${MMPROJ_PATH}`, which fails on an empty value. Two options:
+If a model variant doesn't support vision, you'd want to drop `MMPROJ_NAME` from its config — but the service unit always passes `--mmproj %h/models/${MMPROJ_NAME}`, which fails on an empty value. Two options:
 
 **Option A — per-model service units:** create `llama-server@.service` (templated) with one ExecStart per variant, and have the switcher start/stop the right instance.
 
-**Option B — wrapper script:** replace `ExecStart` with `ExecStart=%h/llama-server/run.sh`, where `run.sh` builds the argument list and only appends `--mmproj` when `MMPROJ_PATH` is set.
+**Option B — wrapper script:** replace `ExecStart` with `ExecStart=%h/home-ai-server/model-switching/run.sh`, where `run.sh` builds the argument list and only appends `--mmproj` when `MMPROJ_NAME` is set.
 
 Skip this entirely if both models keep vision support.
