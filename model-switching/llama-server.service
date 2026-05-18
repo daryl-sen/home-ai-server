@@ -12,7 +12,9 @@ ExecStart=%h/llama.cpp/build/bin/llama-server \
     --host ${HOST} \
     --port ${PORT} \
     -c ${CTX_SIZE} \
-    --flash-attn on
+    --flash-attn on \
+    --cache-type-k ${CACHE_TYPE_K} \
+    --cache-type-v ${CACHE_TYPE_V}
 Restart=on-failure
 RestartSec=10
 
