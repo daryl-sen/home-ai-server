@@ -14,7 +14,7 @@ ExecStart=%h/llama.cpp/build/bin/llama-server \
     -c ${CTX_SIZE} \
     --flash-attn on \
     --cache-type-k ${CACHE_TYPE_K} \
-    --cache-type-v ${CACHE_TYPE_V}
+    --cache-type-v ${CACHE_TYPE_V} \
     --webui-mcp-proxy
 Restart=on-failure
 RestartSec=10
