@@ -4,7 +4,7 @@
 - **SSH alias:** `local-ai` (→ `100.89.219.6`, user `daryl`, key `~/.ssh/id_ed25519`)
 - **Remote repo path:** `~/home-ai-server`
 - **Model switching script:** `~/home-ai-server/model-switching/switch-model`
-- **Models:** 27b (fast dense) ↔ 35b (MoE, more accurate)
+- **Models:** 27b (`Qwen3.8-27B-Q4_K_M.gguf`, fast dense) ↔ 35b (`Qwen_Qwen3.6-35B-A3B-Q4_K_M.gguf`, MoE, more accurate)
 
 ## Quick commands
 - Switch to 35b (accurate): `ssh local-ai ~/home-ai-server/model-switching/switch-model 35b`

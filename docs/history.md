@@ -157,15 +157,23 @@ Stored in `~/models/`. Currently downloaded:
 
 | File | Type | Size |
 |------|------|------|
-| `Qwen_Qwen3.6-35B-A3B-Q4_K_M.gguf` | Main model (Q4_K_M) | ~19.9 GiB |
-| `mmproj-BF16.gguf` | Vision projector (BF16) | ~861 MiB |
-| `Qwen_Qwen3.5-27B-Q4_K_M.gguf` | Older model (Q4_K_M) | ~16.5 GB |
-| `Qwen_Qwen3.5-27B-Q6_K.gguf` | Older model (Q6_K) | ~22 GB |
+| `Qwen_Qwen3.6-35B-A3B-Q4_K_M.gguf` | 35B MoE main model (Q4_K_M) | ~19.9 GiB |
+| `mmproj-BF16.gguf` | 35B vision projector (BF16) | ~861 MiB |
+| `Qwen3.8-27B-Q4_K_M.gguf` | 27B dense main model (Q4_K_M) | ~16.5 GB |
+| `mmproj-Qwen3.8-27B-bf16.gguf` | 27B vision projector (BF16) | ~? MiB |
+| `Qwen3.6-27B-Q4_K_M.gguf` | 27B dense model (Q4_K_M) | ~? GB |
+| `Qwen_Qwen3.5-27B-Q4_K_M.gguf` | Older 27B model (Q4_K_M) | ~16.5 GB |
+| `Qwen_Qwen3.5-27B-Q6_K.gguf` | Older 27B model (Q6_K) | ~22 GB |
+| `google_gemma-4-31B-it-Q4_K_M.gguf` | Gemma 4 31B model (Q4_K_M) | ~? GB |
+| `mmproj-27B-BF16.gguf` | 27B vision projector (BF16) | ~? MiB |
 
 Sources:
-- Qwen 3.6: [bartowski/Qwen_Qwen3.6-35B-A3B-GGUF](https://huggingface.co/bartowski/Qwen_Qwen3.6-35B-A3B-GGUF)
-- Vision projector: [unsloth/Qwen3.6-35B-A3B-GGUF](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF) (file: `mmproj-BF16.gguf`)
-- Qwen 3.5: [bartowski/Qwen_Qwen3.5-27B-GGUF](https://huggingface.co/bartowski/Qwen_Qwen3.5-27B-GGUF)
+- Qwen 3.6 35B: [bartowski/Qwen_Qwen3.6-35B-A3B-GGUF](https://huggingface.co/bartowski/Qwen_Qwen3.6-35B-A3B-GGUF)
+- 35B Vision projector: [unsloth/Qwen3.6-35B-A3B-GGUF](https://huggingface.co/unsloth/Qwen3.6-35B-A3B-GGUF) (file: `mmproj-BF16.gguf`)
+- Qwen 3.8 27B: [bartowski/Qwen3.8-27B-GGUF](https://huggingface.co/bartowski/Qwen3.8-27B-GGUF)
+- Qwen 3.6 27B: [bartowski/Qwen_Qwen3.6-27B-GGUF](https://huggingface.co/bartowski/Qwen_Qwen3.6-27B-GGUF)
+- Qwen 3.5 27B: [bartowski/Qwen_Qwen3.5-27B-GGUF](https://huggingface.co/bartowski/Qwen_Qwen3.5-27B-GGUF)
+- Gemma 4 31B: [google/gemma-4-31B-it](https://huggingface.co/google/gemma-4-31B-it)
 
 To download a new model:
 
