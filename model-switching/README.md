@@ -15,8 +15,8 @@ Because it's a user service, `sudo` is only needed once during initial setup (to
 ```
 ~/home-ai-server/model-switching/
 ├── configs/
-│   ├── 27b.conf                 (fast mode)
-│   └── 35b.conf                 (accurate mode)
+│   ├── 27b.conf                 (accurate mode)
+│   └── 35b.conf                 (fast mode)
 ├── active.conf                  → symlink to one of configs/*.conf (created by install.sh)
 ├── switch-model                 (switcher script)
 ├── llama-server.service         (systemd user unit)
@@ -64,8 +64,8 @@ mkdir -p ~/.local/bin && ln -sf ~/home-ai-server/model-switching/switch-model ~/
 ### Switching models
 
 ```bash
-~/home-ai-server/model-switching/switch-model 27b       # fast mode
-~/home-ai-server/model-switching/switch-model 35b       # accurate mode
+~/home-ai-server/model-switching/switch-model 27b       # accurate mode
+~/home-ai-server/model-switching/switch-model 35b       # fast mode
 ~/home-ai-server/model-switching/switch-model status    # show active config + service state
 ~/home-ai-server/model-switching/switch-model restart   # restart without changing model
 ```
