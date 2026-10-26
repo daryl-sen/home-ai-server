@@ -1,26 +1,23 @@
 #!/usr/bin/env bash
 # Switch the remote AI server to a model.
-# Usage: ./scripts/switch-ai-model {27b|35b}
+# Usage: ./scripts/switch-ai-model {27b|35b|status|restart}
 #
 # SSH alias: local-ai  (100.89.219.6, user: daryl)
 # Model script: ~/home-ai-server/model-switching/switch-model
 
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PARENT="$(dirname "$ROOT")"
-
 case "${1:-}" in
-    27b|35b)
-        ssh local-ai "$PARENT/model-switching/switch-model $1"
+    27b|35b|status|restart)
+        ssh local-ai "~/home-ai-server/model-switching/switch-model $1"
         ;;
     -h|--help|help)
-        echo "Usage: $0 {27b|35b}"
+        echo "Usage: $0 {27b|35b|status|restart}"
         echo ""
         echo "Switch the AI server at 100.89.219.6 to the given model."
         ;;
     *)
-        echo "Usage: $0 {27b|35b}" >&2
+        echo "Usage: $0 {27b|35b|status|restart}" >&2
         exit 1
         ;;
 esac
