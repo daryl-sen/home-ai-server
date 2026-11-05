@@ -10,6 +10,49 @@ Self-hosted LLM inference server running llama.cpp inside a Ubuntu VM on TrueNAS
 
 ---
 
+## Upgrade Log
+
+### 2026-11-05 — llama.cpp b10819 (2026-09-05) → v0.9.0 (b12110, commit `cd959bae9`)
+
+Upgraded the llama.cpp build on the AI server (`local-ai`). The old build was ~2 months / 1,307 commits behind, spanning two releases (v0.8.0, v0.9.0).
+
+**Why:** CUDA MoE fusions (speeds up the 35b A3B model), `flash_attn_ext_rows` + multi-seq KV improvements for the 128k server, Qwen-VL image-resize fixes, a batch of server/KV-cache bug fixes, new `/v1/realtime` and `/tts` endpoints.
+
+**How** (safe-upgrade pattern — note: the AI session driving the upgrade was itself served by this server, so the old server had to keep running until the final swap):
+
+1. Back up the current build **before** touching sources: `cp -a ~/llama.cpp/build/bin ~/llama-server-bin-backup-pre-v090` (224M).
+2. `git checkout v0.9.0` in `~/llama.cpp` (repo is now in detached HEAD at the tag — check out the new tag/branch before the next upgrade).
+3. `cmake -S . -B build && cmake --build build -j8` (~8 min). The old server keeps running the whole time — a running process is unaffected by its binary/lib files being replaced on disk.
+4. Verify the new binary in place: `~/llama.cpp/build/bin/llama-server --version`.
+5. Atomic swap via a **detached** script (`~/upgrade-v090.sh` on the server, kept as a template): `systemctl --user stop llama-server` → start → poll `:8080/health` for up to 8 min → **auto-rollback** (restore backup dir + restart) if unhealthy. Detaching matters: the script survives the API downtime that would otherwise kill the driving session. Actual downtime was ~15s (model was in the page cache).
+
+**Result:** v0.9.0 (b12110) running, identical cmdline (27b + mmproj, 128k ctx, `--webui-mcp-proxy` verified unchanged), `switch-model` unaffected.
+
+**Artifacts on the server** (`daryl@local-ai`):
+
+| Path | What | Keep? |
+|------|------|-------|
+| `~/llama-server-bin-backup-pre-v090` (224M) | Full pre-upgrade `build/bin` — rollback point | Until v0.9.0 proves stable, then delete |
+| `~/upgrade-v090.sh` | The swap script (template for the next upgrade) | Yes |
+| `~/.upgrade-v090.log` / `~/.upgrade-v090.status` | Swap log / final status | Optional |
+| `~/llama-server-backup-20260905` (9.3M, single ELF) | Orphan from the Sept 5 upgrade. Predates the launcher+shared-libs split, so it **cannot** be used for rollback — a decoy | ~~Candidate for deletion~~ **deleted 2026-11-05** |
+
+**Rollback (if ever needed):**
+
+```bash
+systemctl --user stop llama-server
+rm -rf ~/llama.cpp/build/bin
+cp -a ~/llama-server-bin-backup-pre-v090 ~/llama.cpp/build/bin
+systemctl --user start llama-server
+```
+
+**Gotcha — absolute RUNPATH:** all llama.cpp binaries carry `RUNPATH=/home/daryl/llama.cpp/build/bin` (not `$ORIGIN`). Consequences:
+
+- Running a backed-up binary *from its backup dir* loads the **current** libs out of `build/bin` — the version string looks chimeric (e.g. `0.9.0-dev (build 10819, commit 6a1a922d2)` for the old build). Verify a backup with `LD_LIBRARY_PATH=<backup-dir> <backup-dir>/llama-server --version` instead (returns the true `0.4.0-dev, build 10819`).
+- Rollback only works as a **full-directory restore** into `build/bin` (as above) — never partial copies, or binaries and libs will mix versions.
+
+---
+
 ## System Overview
 
 ```
