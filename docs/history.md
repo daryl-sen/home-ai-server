@@ -63,14 +63,14 @@ Replaced the custom restart-based model switcher (`active.conf` symlink + `confi
 - `--models-max 1` = one model resident at a time (32GB VRAM can't hold both); a switch purges the loaded model *before* loading the new one (~40-60s), and a model serving a request is never unloaded mid-stream.
 - Per-model config moved from `configs/{27b,35b}.conf` (KEY=VALUE + EnvironmentFile) to `model-switching/models.preset.ini` (INI: shared flags in `[*]`, per-model sections named after the flat `.gguf` filename). Unknown keys are a hard error. 27b carries `load-on-startup = true`. Preset edits apply without restart via `GET /models?reload=1`.
 - **Model IDs are now the filenames** (`Qwen3.8-27B-Q4_K_M`, `Qwen_Qwen3.6-35B-A3B-Q4_K_M`) and are **required** in every request (missing/unknown → 400). Previously the single-model server ignored the field entirely.
-- Workstation switcher `scripts/switch-ai-model` now calls the API directly (no SSH needed) and rewrites the model key in `~/.config/opencode/opencode.json`. Server-side `model-switching/switch-model` does the API load + polls `GET /models` until `status.value == "loaded"`.
+- Switcher scripts were initially migrated to API calls (`POST /models/load` + poll `GET /models` until `status.value == "loaded"`), then **removed the same day in favor of the llama.cpp web UI** (`http://<server>:8080`) for model switching. Both models are listed in the workstation's `~/.config/opencode/opencode.json` so opencode's `/model` command switches between them (the router auto-loads the selected model on the next request).
 - Temporary preset aliases `my-model` / `llama-cpp/my-model` → 27b keep the pre-migration opencode session (which sends `my-model`) working; remove the `alias` line + `?reload=1` once unused.
 - Deleted stale models from `~/models/`: `google_gemma-4-31B-it-Q4_K_M`, `Qwen3.6-27B-Q4_K_M`, `Qwen_Qwen3.5-27B-Q4_K_M` + orphaned `mmproj-27B-BF16.gguf` (~54GB freed; `~/models/` now holds exactly the 2 active models + their 2 mmprojs).
 - Known deltas: pinned `ctx-size` disables `--fit` auto-sizing (intended); mmproj is not in the router's memory measurements (irrelevant with `--models-max 1`); flat `mmproj*.gguf` files are not auto-attached (hence explicit `mmproj =` per model).
 
 **How:** preflight (router on :8099 with a no-load preset — validated INI, discovery, aliases, zero VRAM use) → detached swap script (`~/migrate-router.sh`, auto-rollback to the backed-up unit) → verified: health, both models chat via canonical names + alias, missing-model 400, full 35b↔27b switch round-trip, opencode session survived throughout.
 
-**Rollback (pre-router single-model mode):** the old unit is at `~/.llama-server.service.pre-router.bak` and the legacy `active.conf` symlink + `configs/` are intact:
+**Rollback (pre-router single-model mode):** the old unit is at `~/.llama-server.service.pre-router.bak`. The legacy `configs/` were removed from the repo after the migration (still present on the server; restorable from git history, e.g. `git checkout 8d3b499 -- model-switching/configs`) — restore them plus an `active.conf` symlink pointing at one, then:
 
 ```bash
 cp ~/.llama-server.service.pre-router.bak ~/.config/systemd/user/llama-server.service
@@ -491,13 +491,14 @@ This file is a build log and reference — **not the source of truth**. For curr
 
 | File | Purpose |
 |------|---------|
-| `model-switching/configs/*.conf` | Per-model server configuration |
+| `AGENTS.md` | Orientation for AI agents (start here) |
+| `model-switching/models.preset.ini` | Per-model server configuration (router-mode presets) |
 | `model-switching/llama-server.service` | Systemd user service definition |
-| `model-switching/README.md` | How to switch models and manage the service |
+| `model-switching/README.md` | Managing the service, switching models, changing config |
 | `~/llama.cpp/` | llama.cpp source and build |
 | `~/llama.cpp/build/bin/` | Compiled binaries |
-| `~/models/` | GGUF model files and vision projector |
-| `README.md` (root) | Overview of all repo tooling |
+| `~/models/` | GGUF model files and vision projectors |
+| `README.md` (root) | Overview of the repo |
 
 ## Relevant Documentation
 

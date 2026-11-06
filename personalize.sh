@@ -33,8 +33,6 @@ FILES=(
     "$ROOT/common-commands.md"
     "$ROOT/docs/history.md"
     "$ROOT/model-switching/README.md"
-    "$ROOT/scripts/claude-vm"
-    "$ROOT/scripts/setup"
 )
 
 # Use perl for portable in-place edit (works on macOS and Linux).

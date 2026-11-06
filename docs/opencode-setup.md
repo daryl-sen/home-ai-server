@@ -2,9 +2,9 @@
 
 Config file: `~/.config/opencode/opencode.json`
 
-The server runs in llama.cpp **router mode**, so the model key must be the exact model ID (filename without `.gguf`). The switcher (`./scripts/switch-ai-model`) rewrites this key when you switch models.
+The server runs in llama.cpp **router mode**, so the model keys must be the exact model IDs (filenames without `.gguf`). Both models are listed, so you can switch between them with opencode's `/model` command — the router auto-loads the selected model on the next request (with `--models-max 1` that purges the other model first; expect a ~40–60s wait on the first request after switching).
 
-Content (27b active):
+Content (27b currently selected):
 
 ```json
 {
@@ -18,7 +18,19 @@ Content (27b active):
       },
       "models": {
         "Qwen3.8-27B-Q4_K_M": {
-          "name": "local model (27b)",
+          "name": "Qwen 3.8 27B (dense, accurate)",
+          "tool_call": true,
+          "limit": {
+            "context": 130000,
+            "output": 8192
+          },
+          "modalities": {
+            "input": ["text", "image"],
+            "output": ["text"]
+          }
+        },
+        "Qwen_Qwen3.6-35B-A3B-Q4_K_M": {
+          "name": "Qwen 3.6 35B-A3B (MoE, fast)",
           "tool_call": true,
           "limit": {
             "context": 130000,
@@ -44,11 +56,8 @@ Content (27b active):
 }
 ```
 
-## Model switching
+## Notes
 
-```bash
-./scripts/switch-ai-model 35b    # loads the model on the server AND rewrites the key above
-```
-
-- An **already-running** opencode session keeps sending the model name it started with; the router auto-loads it on demand (with `--models-max 1` that purges whichever model is active). Start a new session to pick up the config change cleanly.
-- The pre-migration model key was `my-model` (ignored in single-model mode). A temporary preset alias (`my-model`, `llama-cpp/my-model` → 27b) keeps any stale client working until it is removed from `model-switching/models.preset.ini`.
+- `/model` takes effect for the current session immediately (the next request uses the selected model; the router loads it if needed).
+- The pre-migration model key was `my-model` (ignored in single-model mode). A temporary preset alias (`my-model`, `llama-cpp/my-model` → 27b) in `model-switching/models.preset.ini` keeps any stale client working until it is removed.
+- Keep `limit.context` at or below the server's pinned `ctx-size` (see `model-switching/models.preset.ini`).

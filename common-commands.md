@@ -4,19 +4,19 @@ The llama server runs as a **user-level** systemd service (`llama-server`, user 
 
 ## Model switching
 
-```bash
-# Switch model (loads the new one, purges the old; ~40-60s, no service restart)
-~/home-ai-server/model-switching/switch-model 27b   # dense, more accurate (default)
-~/home-ai-server/model-switching/switch-model 35b   # MoE, faster
+Preferred: the **web UI** at `http://100.89.219.6:8080` — pick the model you want from the model list and load it. The old model is purged and the new one loads (~40–60s); the API stays up throughout.
 
-# Check which model is loaded
-~/home-ai-server/model-switching/switch-model status
-```
-
-From the workstation (also updates this machine's opencode model):
+From the command line:
 
 ```bash
-./scripts/switch-ai-model 27b | 35b | status
+# status
+curl -s http://100.89.219.6:8080/models | jq -r '.data[] | .id + "  [" + .status.value + "]"'
+
+# load / unload
+curl -s -X POST http://100.89.219.6:8080/models/load  -H 'Content-Type: application/json' \
+     -d '{"model":"Qwen_Qwen3.6-35B-A3B-Q4_K_M"}'
+curl -s -X POST http://100.89.219.6:8080/models/unload -H 'Content-Type: application/json' \
+     -d '{"model":"Qwen3.8-27B-Q4_K_M"}'
 ```
 
 Per-model flags (ctx, KV cache type, mmproj) live in `model-switching/models.preset.ini`. Edit it, then apply **without** a restart:
@@ -48,10 +48,6 @@ journalctl --user -u llama-server -b -1
 
 ```bash
 curl -s http://100.89.219.6:8080/health
-curl -s http://100.89.219.6:8080/models | jq -r '.data[] | .id + "  [" + .status.value + "]"'
-# router management:
-curl -s -X POST http://100.89.219.6:8080/models/load  -H 'Content-Type: application/json' -d '{"model":"Qwen_Qwen3.6-35B-A3B-Q4_K_M"}'
-curl -s -X POST http://100.89.219.6:8080/models/unload -H 'Content-Type: application/json' -d '{"model":"Qwen3.8-27B-Q4_K_M"}'
 ```
 
 Chat/completion requests **must** set `model` to the exact model ID (missing or unknown → 400):
@@ -59,5 +55,5 @@ Chat/completion requests **must** set `model` to the exact model ID (missing or 
 ```bash
 curl -s http://100.89.219.6:8080/v1/chat/completions \
   -H 'Content-Type: application/json' \
-  -d '{"model":"Qwen3.8-27B-Q4_K_M","messages":[{"role":"user","content":"hi"}],"max_tokens":16}'
+  -d '{"model":"Qwen3.8-27B-Q4_K_M","messages":[{"role":"user","content":"hi"}],"max_tokens":100}'
 ```
