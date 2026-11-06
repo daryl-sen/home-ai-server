@@ -1,9 +1,12 @@
+# Open Code setup for the local llama.cpp server
+
 Config file: `~/.config/opencode/opencode.json`
 
-Content:
+The server runs in llama.cpp **router mode**, so the model key must be the exact model ID (filename without `.gguf`). The switcher (`./scripts/switch-ai-model`) rewrites this key when you switch models.
+
+Content (27b active):
 
 ```json
-
 {
   "$schema": "https://opencode.ai/config.json",
   "provider": {
@@ -14,8 +17,8 @@ Content:
         "baseURL": "http://100.89.219.6:8080/v1"
       },
       "models": {
-        "my-model": {
-          "name": "qwen3.6:35b",
+        "Qwen3.8-27B-Q4_K_M": {
+          "name": "local model (27b)",
           "tool_call": true,
           "limit": {
             "context": 130000,
@@ -40,3 +43,12 @@ Content:
   }
 }
 ```
+
+## Model switching
+
+```bash
+./scripts/switch-ai-model 35b    # loads the model on the server AND rewrites the key above
+```
+
+- An **already-running** opencode session keeps sending the model name it started with; the router auto-loads it on demand (with `--models-max 1` that purges whichever model is active). Start a new session to pick up the config change cleanly.
+- The pre-migration model key was `my-model` (ignored in single-model mode). A temporary preset alias (`my-model`, `llama-cpp/my-model` → 27b) keeps any stale client working until it is removed from `model-switching/models.preset.ini`.

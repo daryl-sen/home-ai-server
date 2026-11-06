@@ -1,33 +1,35 @@
 #!/usr/bin/env bash
+# Switch the active model on the llama.cpp router (no service restart).
+# The previously loaded model is purged before the new one loads (models-max 1).
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+API="http://127.0.0.1:8080"
 
-usage() {
-    echo "Usage: switch-model {27b|35b|status|restart}"
-    exit 1
-}
-
-[[ $# -eq 1 ]] || usage
-
-case "$1" in
-    27b|35b)
-        target="$ROOT/configs/$1.conf"
-        [[ -f "$target" ]] || { echo "Missing $target"; exit 1; }
-        ln -sfn "$target" "$ROOT/active.conf"
-        systemctl --user restart llama-server
-        echo "Switched to $1, restarting llama-server..."
-        sleep 2
-        systemctl --user status llama-server --no-pager | head -n 5
-        ;;
+case "${1:-}" in
+    27b) model="Qwen3.8-27B-Q4_K_M" ;;
+    35b) model="Qwen_Qwen3.6-35B-A3B-Q4_K_M" ;;
     status)
-        echo "Active config: $(readlink -f "$ROOT/active.conf")"
-        systemctl --user is-active llama-server
-        ;;
-    restart)
-        systemctl --user restart llama-server
+        curl -sS "$API/models" | jq -r '.data[] | "  \(.id)  [\(.status.value)]"'
+        exit 0
         ;;
     *)
-        usage
+        echo "Usage: switch-model {27b|35b|status}" >&2
+        exit 1
         ;;
 esac
+
+echo "Switching to $model (old model purged first; takes ~15-30s)..."
+curl -sS -X POST "$API/models/load" -H 'Content-Type: application/json' -d "{\"model\":\"$model\"}" >/dev/null
+
+for _ in $(seq 1 90); do
+    st="$(curl -sS "$API/models" | jq -r --arg m "$model" '.data[] | select(.id == $m) | .status.value' 2>/dev/null || true)"
+    if [[ "$st" == "loaded" ]]; then break; fi
+    sleep 1
+done
+
+final="$(curl -sS "$API/models" | jq -r --arg m "$model" '.data[] | select(.id == $m) | .status.value' 2>/dev/null || true)"
+if [[ "$final" != "loaded" ]]; then
+    echo "Warning: $model is no longer loaded — another client likely reloaded a different model." >&2
+fi
+
+curl -sS "$API/models" | jq -r '.data[] | "  \(.id)  [\(.status.value)]"'

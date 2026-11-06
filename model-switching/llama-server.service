@@ -1,20 +1,15 @@
 [Unit]
-Description=llama.cpp Server (user)
+Description=llama.cpp Server (user, router mode)
 After=network.target
 
 [Service]
 Type=simple
-EnvironmentFile=%h/home-ai-server/model-switching/active.conf
 ExecStart=%h/llama.cpp/build/bin/llama-server \
-    -m %h/models/${MODEL_NAME} \
-    --mmproj %h/models/${MMPROJ_NAME} \
-    -ngl ${GPU_LAYERS} \
-    --host ${HOST} \
-    --port ${PORT} \
-    -c ${CTX_SIZE} \
-    --flash-attn on \
-    --cache-type-k ${CACHE_TYPE_K} \
-    --cache-type-v ${CACHE_TYPE_V} \
+    --models-dir %h/models \
+    --models-preset %h/home-ai-server/model-switching/models.preset.ini \
+    --models-max 1 \
+    --host 0.0.0.0 \
+    --port 8080 \
     --webui-mcp-proxy
 Restart=on-failure
 RestartSec=10
